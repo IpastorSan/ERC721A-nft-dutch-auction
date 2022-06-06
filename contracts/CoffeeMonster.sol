@@ -4,6 +4,8 @@ pragma solidity ^0.8.4;
 
 //importing relevant libraries
 import "@openzeppelin/contracts/access/Ownable.sol";
+import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
+
 import "erc721a/contracts/ERC721A.sol";
 
 import './royalties/ContractRoyalties.sol';
@@ -15,15 +17,12 @@ contract CoffeeMonster is ERC721A, Ownable, ERC2981ContractRoyalties {
     bytes4 private constant _INTERFACE_ID_ERC2981 = 0x2a55205a;
 
     //amount of tokens that have been minted so far, in total and in presale
-    uint256 private numberOfTotalTokens;
+    uint256 private numberOfTokensMinted;
     uint256 private numberOfTokensPhase1;
     
     //declares the maximum amount of tokens that can be minted, total and in presale
     uint256 private maxTotalTokens;
     uint256 private maxTokensPhase1;
-    
-    //initial part of the URI for the metadata
-    string private _currentBaseURI = "ipfs://QmZJ3ohAicfqaCM4UFyvC7uCBdnVsKnNeHnu3DfvknUNmP/";
         
     //cost of mints depending on state of sale    
     uint256 private constant mintCostPhase1 = 1.05 ether;
@@ -57,15 +56,15 @@ contract CoffeeMonster is ERC721A, Ownable, ERC2981ContractRoyalties {
     //current state of sale
     enum State {NoSale, Phase1, Phase2, Phase3}
 
-    //Unrevealed NFT Uri
-    string public unrevealedURI;
+    //NFT Uri
+    string public baseTokenURI;
     
     //declaring initial values for variables
     constructor(string memory _unrevealedURI) ERC721A("Coffee Monster Collection", "CMC") {
-        maxTotalTokens = 10000;
-        maxTokensPhase1 = 8500;
-
-        unrevealedURI = _unrevealedURI;
+        maxTotalTokens = 10001;
+        maxTokensPhase1 = 5501;
+        setRoyalties(owner(), 500);
+        baseTokenURI = _unrevealedURI;
 
     }
 
@@ -74,36 +73,15 @@ contract CoffeeMonster is ERC721A, Ownable, ERC2981ContractRoyalties {
     _;
   }
 
-    
-    //visualize baseURI
-    function _baseURI() internal view virtual override returns (string memory) {
-        return _currentBaseURI;
-    }
-    
-    //change baseURI in case needed for IPFS
-    function changeBaseURI(string memory baseURI_) external onlyOwner {
-        _currentBaseURI = baseURI_;
-        console.log("New Base URI", _currentBaseURI);
-    }
-
-    function changeUnrevealedURI(string memory unrevealedURI_) external onlyOwner {
-        unrevealedURI = unrevealedURI_;
-    }
-
-    function changeMerkleRoot(bytes32 _newMerkleRoot) external onlyOwner {
-        merkleRoot = _newMerkleRoot;
-    }
-    
-    //gets the tokenID of NFT to be minted.
-    function tokenId() internal view returns(uint256) {
-        uint currentId = totalSupply();
-        bool exists = true;
-        while (exists) {
-            currentId += 1;
-            exists = _exists(currentId);
+    ///@dev returns current tokenId
+    function tokenId() external view returns(uint256) {
+        if (numberOfTokensMinted == 0) {
+            return 0;
+        } else {
+            uint currentId = numberOfTokensMinted - 1;
+            return currentId;
         }
-        
-        return currentId;
+
     }
 
     function openSale() external onlyOwner {
@@ -111,76 +89,56 @@ contract CoffeeMonster is ERC721A, Ownable, ERC2981ContractRoyalties {
         phase1LaunchTime = block.timestamp;
         phase2LaunchTime = phase1LaunchTime + 28800; //8 hours
         phase3LaunchTime = phase2LaunchTime + 172800; //48 hours
-
-       
-    }
-
-    function openWhitelistSale() external onlyOwner {
-        require(saleState() != State.NoSale, 'Sale is already Open!');
-        whitelistIsOpen = true;
     }
 
 
-    //mint a @param number of NFTs in public sale
+    /// @dev mint a @param number of NFTs in public sale Phase 1.
+    /// @notice price goes down by 0.5 ETH every 30 mins
     function phase1Mint(uint256 _number) internal {
-        State saleState_ = saleState();
-        require(saleState_ == State.Phase1, "Sale is not open!");
-        require(numberOfTotalTokens < maxTokensPhase1, "Not enough NFTs left to mint..");
-        require(mintsPerAddress[msg.sender] <= maxMintPhase1, "Maximum 5 Mints per Address allowed!");
-        require(_number <= maxMintPhase1, "Maximum 5 mints for phase 1");
+        State _saleState = saleState();
+        require(_saleState == State.Phase1, "Sale is not open!");
+        require(numberOfTokensMinted < maxTokensPhase1, "Not enough NFTs left to mint");
+        require(mintsPerAddress[msg.sender] < maxMintPhase1, "Max 5 Mints per address allowed!");
+        require(_number < maxMintPhase1, "Maximum 5 mints per transaction");
         uint256 mintCost_ = mintCost();
-        require(msg.value >= mintCost_ * _number, "Not sufficient Ether to mint this amount of NFTs");
+        require(msg.value == mintCost_ * _number, "Not enough/too much Ether sent");
 
-        
-
-        _safeMint(msg.sender, _number); //safeMint in ERC721A style
+        _safeMint(msg.sender, _number); 
         mintsPerAddress[msg.sender] += _number;
-        numberOfTotalTokens += _number;
+        numberOfTokensMinted += _number;
         numberOfTokensPhase1 += _number;
 
-        //lastPhase1Price = mintCost_;
-        console.log("Phase1 Mint with price", mintCost_);
     }
     
-    //mint a @param number of NFTs in public sale
-
+    ///@dev mint a @param number of NFTs in public sale. Phase 2
+    ///@notice price is 85% of Phase 1 last price
     function phase2Mint(uint256 _number) internal {
 
         State saleState_ = saleState();
         require(saleState_ == State.Phase2, "Sale in not open!");
-        require(numberOfTotalTokens + _number <= maxTotalTokens - (maxReservedMints - _reservedMints), "Not enough NFTs left to mint..");
+        require(numberOfTokensMinted + _number < maxTotalTokens - maxReservedMints, "Not enough NFTs left to mint..");
         uint256 mintCost_ = mintCost();
-        require(msg.value >= mintCost_ * _number, "Not sufficient Ether to mint this amount of NFTs");
+        require(msg.value == mintCost_ * _number, "Not enough/too much Ether sent");
 
-            _safeMint(msg.sender, _number); //safeMint in ERC721A style
+            _safeMint(msg.sender, _number); 
             mintsPerAddress[msg.sender] += _number;
-            numberOfTotalTokens += _number;
-        
-        
-
+            numberOfTokensMinted += _number;
     }
 
-    //mint a @param number of NFTs in public sale
+    ///@dev mint a @param number of NFTs in public sale. Phase 3
+    ///@notice price is 50% of Phase1 last price
     function phase3Mint(uint256 _number) internal {
         State saleState_ = saleState();
         require(saleState_ == State.Phase3, "Sale in not open!");
-        require(numberOfTotalTokens + _number <= maxTotalTokens - (maxReservedMints - _reservedMints), "Not enough NFTs left to mint..");
+        require(numberOfTokensMinted + _number < maxTotalTokens - maxReservedMints, "Not enough NFTs left to mint..");
         uint mintCost_ = mintCost();
-        require(msg.value >= mintCost_ * _number, "Not sufficient Ether to mint this amount of NFTs");
+        require(msg.value == mintCost_ * _number, "Not enough/too much Ether sent");
 
-        _safeMint(msg.sender, _number); //safeMint in ERC721A style
+        _safeMint(msg.sender, _number);
         mintsPerAddress[msg.sender] += _number;
-        numberOfTotalTokens += _number;
+        numberOfTokensMinted += _number;
 
-        for (uint256 i; i <_number; i++ ){
-
-            uint256 newTokenId = numberOfTotalTokens + i;
-
-            setRoyalties(newTokenId, payable(owner()), 1000);
         }    
-        
-    }
-
 
     //This is the function that will be used in the front-end
     function mintNfts(uint _number) external payable callerIsUser {
@@ -193,100 +151,11 @@ contract CoffeeMonster is ERC721A, Ownable, ERC2981ContractRoyalties {
         } else if (saleState_ == State.Phase3){
             phase3Mint(_number);
         }
-    }
+    }   
 
-    //Whitelist claiming function
-    function whitelistMint(uint256 _number, bytes32[] calldata _merkleProof) external callerIsUser{
-        //basic validation. Wallet has not already claimed
-        require(whitelistIsOpen == true, "Whitelist is not Open");
-        require(!whitelistClaimed[msg.sender], "Address has already claimed NFT");
-        require(numberOfTotalTokens + _number <= maxTotalTokens - (maxReservedMints), "Not enough NFTs left to mint..");
-
-        //The whitelist will have free NFTs??? If so, add payable to this function
-        //require(msg.value >= mintCost_ * _number, "Not sufficient Ether to mint this amount of NFTs");
-
-        //veryfy the provided Merkle Proof
-        bytes32 leaf = keccak256(abi.encodePacked(msg.sender));
-        require(MerkleProof.verify(_merkleProof, merkleRoot, leaf), "Invalid Proof");
-
-        //Mark address as having claimed the token
-        whitelistClaimed[msg.sender] = true;
-
-        //mint tokens 
-        _safeMint(msg.sender, _number); //safeMint in ERC721A style
-            mintsPerAddress[msg.sender] += _number;
-            numberOfTotalTokens += _number;
-    }
-
-
-    function tokenURI(uint256 tokenId_) public view virtual override returns (string memory) {
-        require(_exists(tokenId_), "ERC721Metadata: URI query for nonexistent token");
-        
-        //check to see that 24 hours have passed since beginning of public sale launch
-        if (revealTime == 0) {
-            return unrevealedURI;
-        }
-        
-        else {
-            string memory baseURI = _baseURI();
-            return bytes(baseURI).length > 0 ? string(abi.encodePacked(baseURI, tokenId_.toString(), '.json')) : "";
-        }    
-    }
-    
-    //reserved NFTs for creator
-    function reservedMint(uint256 _number, address recipient) external onlyOwner {
-        require(_reservedMints + _number <= maxReservedMints, "Not enough Reserved NFTs left to mint..");
-
-        _safeMint(recipient, _number); //safeMint in ERC721A style
-        mintsPerAddress[recipient] += _number; 
-        numberOfTotalTokens += _number;
-        _reservedMints += _number;
-        
-        
-    }
-
-    
-    //burn the tokens that have not been sold yet
-    function burnTokens() external onlyOwner {
-        maxTotalTokens = numberOfTotalTokens;
-    }
-    
-    //see the current account balance
-    function accountBalance() public onlyOwner view returns(uint) {
-        return address(this).balance;
-    }
-    
-    //retrieve all funds received from minting
-    function withdraw() external onlyOwner {
-        uint256 balance = accountBalance();
-        require(balance > 0, 'No Funds to withdraw, Balance is 0');
-
-        _withdraw(payable(owner()), balance);
-    }
-    
-    //send the percentage of funds to a shareholder´s wallet
-    function _withdraw(address payable account, uint256 amount) internal {
-        (bool sent, ) = account.call{value: amount}("");
-        require(sent, "Failed to send Ether");
-    }
-    
-    //see the total amount of tokens that have been minted
-    
-    // function totalSupply() public view override returns(uint256) {
-    //      return numberOfTotalTokens;
-    //  }
-    
-    //to see the total amount of reserved mints left 
-    function reservedMintsLeft() public onlyOwner view returns(uint256) {
-        uint256 mintsLeft = maxReservedMints - _reservedMints;
-        console.log("Reserved Mints Left: ", mintsLeft);
-        return mintsLeft;
-        
-        
-    }
-    //see current state of sale
-    //see the current state of the sale
+    /// @dev see the current sale state to set prices
     function saleState() public view returns(State){
+
         if (phase1LaunchTime == 0) {
             return State.NoSale;
         }
@@ -301,32 +170,48 @@ contract CoffeeMonster is ERC721A, Ownable, ERC2981ContractRoyalties {
         }
     }
     
-    //gets the cost of current mint
-    function mintCost() public view returns(uint) {
+    ///@dev get the current cost of minting. Used for the Dutch Auction functionality
+    ///@dev cost in Phase 1 decreases every 30 mins
+    ///@dev cost in Phase 2 is 85% of last price in Phase 1
+    ///@dev cost in Phase 3 is 50% of last price in Phase 1
+    function mintCost() internal view returns(uint) {
         State saleState_ = saleState();
 
         if (saleState_ == State.NoSale) {
             return mintCostPhase1;
         }
-
         else if (saleState_ == State.Phase1) {
             uint256 timestamp = (block.timestamp - phase1LaunchTime) / uint256(1800);
             return prices[timestamp];
         }
         else if (saleState_ == State.Phase2) {
-            return ((lastPhase1Price * uint256(85)) / uint256(100));
+            return ((lastPhase1Price * uint256(8500)) / uint256(10000));
         }   
         else {
-            return lastPhase1Price; //price in phase 3 is higher than phase 2?
+            return ((lastPhase1Price * uint256(5000)) / uint256(10000));
         }    
     }
 
-    function reveal() external onlyOwner{
+    function _baseURI() internal view override returns (string memory) {
+       return baseTokenURI;
+    }
+    
+    /// @dev changes BaseURI and set it to the true URI for collection
+    /// @param revealedTokenURI new token URI. Format required ipfs://CID/
+    function reveal(string memory revealedTokenURI) public onlyOwner {
+        baseTokenURI = revealedTokenURI;
+    }
 
-        require(revealTime == 0, "Already been revealed!");
-        revealTime = block.timestamp;
-        console.log("Revealed, reveal time: ", revealTime);
+    /// @dev reserved NFTs for Team
+    /// @param _number number of NFTs to be minted
+    /// @param recipient address where reserved nfts will be minted to
+    function reservedMint(uint256 _number, address recipient) external onlyOwner {
+        require(_reservedMints + _number < maxReservedMints, "Not enough Reserved NFTs left");
 
+        _safeMint(recipient, _number);
+        numberOfTokensMinted += _number;
+        _reservedMints += _number;
+        
     }
 
     function supportsInterface(bytes4 interfaceId) public view virtual override(ERC721A, ERC2981Base)
@@ -342,7 +227,17 @@ contract CoffeeMonster is ERC721A, Ownable, ERC2981ContractRoyalties {
         _setRoyalties(recipient, value);
     }
 
-    //in case somebody accidentaly sends funds or transaction to contract. 
+    /// @dev retrieve all the funds obtained during minting
+    function withdraw() external onlyOwner {
+        uint256 balance = address(this).balance;
+
+        require(balance > 0, "No funds left to withdraw");
+
+        (bool sent, ) = payable(owner()).call{value: balance}("");
+        require(sent, "Failed to send Ether");
+    }
+
+    /// @dev reverts transaction if someone accidentally send ETH to the contract 
     receive() payable external {
         revert();
     }
