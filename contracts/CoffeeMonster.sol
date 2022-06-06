@@ -21,8 +21,8 @@ contract CoffeeMonster is ERC721A, Ownable, ERC2981ContractRoyalties {
     uint256 private numberOfTokensPhase1;
     
     //declares the maximum amount of tokens that can be minted, total and in presale
-    uint256 private maxTotalTokens;
-    uint256 private maxTokensPhase1;
+    uint256 private constant maxTotalTokens = 10000;
+    uint256 private constant maxTokensPhase1 = 5501;
         
     //cost of mints depending on state of sale    
     uint256 private constant mintCostPhase1 = 1.05 ether;
@@ -39,7 +39,7 @@ contract CoffeeMonster is ERC721A, Ownable, ERC2981ContractRoyalties {
     uint private _reservedMints = 0;
     
     //the maximum amount of reserved mints allowed for creator and giveaways. 500. Strict comparison
-    uint private maxReservedMints = 501;
+    uint private constant maxReservedMints = 501;
     
     //marks the timestamp of when the respective sales open
     uint256 internal phase1LaunchTime;
@@ -60,8 +60,6 @@ contract CoffeeMonster is ERC721A, Ownable, ERC2981ContractRoyalties {
     
     //declaring initial values for variables
     constructor(string memory _unrevealedURI) ERC721A("Coffee Monster Collection", "CMC") {
-        maxTotalTokens = 10001;
-        maxTokensPhase1 = 5501;
         setRoyalties(owner(), 500);
         baseTokenURI = _unrevealedURI;
 
