@@ -5,9 +5,11 @@ async function main() {
 //run with this for testing: npx hardhat run scripts/deploy-script.js --network rinkeby 
 //run with this for mainnet: npx hardhat run scripts/deploy-script.js --network mainnet
 
+let unrevealedURI = ""
+
 // We get the contract to deploy
   const CoffeeMonsterContract = await hre.ethers.getContractFactory("CoffeeMonster");
-  const CoffeeMonster = await CoffeeMonsterContract.deploy();
+  const CoffeeMonster = await CoffeeMonsterContract.deploy(unrevealedURI);
 
   await CoffeeMonster.deployed();
 

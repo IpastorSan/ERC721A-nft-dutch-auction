@@ -1,26 +1,18 @@
-// SPDX-License-Identifier: GPL-3.0
+// SPDX-License-Identifier: MIT
 
 pragma solidity ^0.8.4;
 
 //importing relevant libraries
 import "@openzeppelin/contracts/access/Ownable.sol";
-import "@openzeppelin/contracts/utils/cryptography/MerkleProof.sol";
 import "erc721a/contracts/ERC721A.sol";
+
+import './royalties/ContractRoyalties.sol';
 import "hardhat/console.sol";
 
-contract CoffeeMonster is ERC721A, RoyaltiesV2Impl, Ownable {
-    using Strings for uint256;
-
-    bytes32 public merkleRoot = 0x8517ae3722cd319237317d5d2d15d1ca236c5239b57b6a4f3c93c55248ad35c0;
+contract CoffeeMonster is ERC721A, Ownable, ERC2981ContractRoyalties {
 
     //Interface for royalties
     bytes4 private constant _INTERFACE_ID_ERC2981 = 0x2a55205a;
-
-    //mapping of already claimed addreeses
-    mapping(address => bool) public whitelistClaimed;
-
-    //Mapping para atribuirle un URI para cada token. Viene de ERC720 en contrato original
-    mapping(uint256 => string) internal id_to_URI;
 
     //amount of tokens that have been minted so far, in total and in presale
     uint256 private numberOfTotalTokens;
@@ -41,16 +33,15 @@ contract CoffeeMonster is ERC721A, RoyaltiesV2Impl, Ownable {
                             0.65 ether, 0.60 ether, 0.55 ether, 0.5 ether, 
                             0.45 ether, 0.40 ether, 0.35 ether, 0.30 ether];
   
-
     
-    //maximum amount of mints allowed per person
-    uint256 public constant maxMintPhase1 = 5;
+    //maximum amount of mints allowed per person: 5. Strict comparison
+    uint256 public constant maxMintPhase1 = 6;
     
     //the amount of reserved mints that have currently been executed by creator and giveaways
     uint private _reservedMints = 0;
     
-    //the maximum amount of reserved mints allowed for creator and giveaways
-    uint private maxReservedMints = 500;
+    //the maximum amount of reserved mints allowed for creator and giveaways. 500. Strict comparison
+    uint private maxReservedMints = 501;
     
     //marks the timestamp of when the respective sales open
     uint256 internal phase1LaunchTime;
@@ -66,19 +57,16 @@ contract CoffeeMonster is ERC721A, RoyaltiesV2Impl, Ownable {
     //current state of sale
     enum State {NoSale, Phase1, Phase2, Phase3}
 
-    bool private whitelistIsOpen;
-
-    //defines the uri for when the NFTs have not been yet revealed
+    //Unrevealed NFT Uri
     string public unrevealedURI;
     
     //declaring initial values for variables
-    constructor() ERC721A("Five Fates Collection", "FFS") {
+    constructor(string memory _unrevealedURI) ERC721A("Coffee Monster Collection", "CMC") {
         maxTotalTokens = 10000;
         maxTokensPhase1 = 8500;
 
-        unrevealedURI = "ipfs://QmVLoM5WW6rzapfVk32oNmK7vRLbum3rhGB1i7BY5kXNkE";
-        console.log("Current Base URI", _currentBaseURI);
-        console.log("Current unrevealed URI", unrevealedURI);
+        unrevealedURI = _unrevealedURI;
+
     }
 
     modifier callerIsUser() {
@@ -86,11 +74,6 @@ contract CoffeeMonster is ERC721A, RoyaltiesV2Impl, Ownable {
     _;
   }
 
-    //in case somebody accidentaly sends funds or transaction to contract. 
-    receive() payable external {}
-    fallback() payable external {
-        revert();
-    }
     
     //visualize baseURI
     function _baseURI() internal view virtual override returns (string memory) {
@@ -346,33 +329,22 @@ contract CoffeeMonster is ERC721A, RoyaltiesV2Impl, Ownable {
 
     }
 
-    function supportsInterface(bytes4 interfaceId) public view override(ERC721A) 
-        returns (bool){
-            if(interfaceId == LibRoyaltiesV2._INTERFACE_ID_ROYALTIES) {
-                return true;
-        }
-
-        if(interfaceId == _INTERFACE_ID_ERC2981) {
-            return true;
-        }
-
+    function supportsInterface(bytes4 interfaceId) public view virtual override(ERC721A, ERC2981Base)
+        returns (bool)
+    {
         return super.supportsInterface(interfaceId);
     }
 
-    function setRoyalties(uint _tokenId, address payable _royaltiesReceipientAddress, uint96 _percentageBasisPoints) internal {
-        LibPart.Part[] memory _royalties = new LibPart.Part[](1);
-        _royalties[0].value = _percentageBasisPoints;
-        _royalties[0].account = _royaltiesReceipientAddress;
-        _saveRoyalties(_tokenId, _royalties);
+    /// @dev Sets token royalties
+    /// @param recipient recipient of the royalties
+    /// @param value percentage (using 2 decimals - 10000 = 100, 0 = 0)
+    function setRoyalties(address recipient, uint256 value) public {
+        _setRoyalties(recipient, value);
     }
 
-    function royaltyInfo(uint256 _tokenId, uint256 _salePrice) external view returns (address receiver, uint256 royaltyAmount) {
-        LibPart.Part[] memory _royalties = royalties[_tokenId];
-        if(_royalties.length > 0 ) {
-            return(_royalties[0].account, (_salePrice * _royalties[0].value) / 10000);
-        }
-        return (address(0), 0);
+    //in case somebody accidentaly sends funds or transaction to contract. 
+    receive() payable external {
+        revert();
     }
     
-   
 }
