@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: MIT
 
-pragma solidity ^0.8.4;
+pragma solidity ^0.8.11;
 
 //importing relevant libraries
 import "@openzeppelin/contracts/access/Ownable.sol";
@@ -26,7 +26,6 @@ contract CoffeeMonster is ERC721A, Ownable, ERC2981ContractRoyalties {
         
     //cost of mints depending on state of sale    
     uint256 private constant mintCostPhase1 = 1.05 ether;
-    uint256 private constant decrement = 0.05 ether;
     uint256[16] private prices = [1.05 ether, 1 ether, 0.95 ether, 0.90 ether, 
                             0.85 ether, 0.80 ether, 0.75 ether, 0.70 ether, 
                             0.65 ether, 0.60 ether, 0.55 ether, 0.5 ether, 
@@ -48,7 +47,7 @@ contract CoffeeMonster is ERC721A, Ownable, ERC2981ContractRoyalties {
     uint256 internal phase3LaunchTime;
     uint256 internal revealTime;
 
-    uint256 private lastPhase1Price = 0.30 ether;
+    uint256 private lastPhase1Price;
 
     //amount of mints that each address has executed
     mapping(address => uint256) public mintsPerAddress;
@@ -99,7 +98,7 @@ contract CoffeeMonster is ERC721A, Ownable, ERC2981ContractRoyalties {
         require(_saleState == State.Phase1, "Sale is not open!");
         require(numberOfTokensMinted < maxTokensPhase1, "Not enough NFTs left to mint");
         require(mintsPerAddress[msg.sender] < maxMintPhase1, "Max 5 Mints per address allowed!");
-        require(_number < maxMintPhase1, "Maximum 5 mints per transaction");
+        require(_number < maxMintPhase1, "Max reached for phase 1");
         uint256 mintCost_ = mintCost();
         require(msg.value == mintCost_ * _number, "Not enough/too much Ether sent");
 
@@ -107,6 +106,8 @@ contract CoffeeMonster is ERC721A, Ownable, ERC2981ContractRoyalties {
         mintsPerAddress[msg.sender] += _number;
         numberOfTokensMinted += _number;
         numberOfTokensPhase1 += _number;
+
+        lastPhase1Price = mintCost();
 
     }
     
@@ -174,7 +175,7 @@ contract CoffeeMonster is ERC721A, Ownable, ERC2981ContractRoyalties {
     ///@dev cost in Phase 1 decreases every 30 mins
     ///@dev cost in Phase 2 is 85% of last price in Phase 1
     ///@dev cost in Phase 3 is 50% of last price in Phase 1
-    function mintCost() internal view returns(uint) {
+    function mintCost() public view returns(uint) {
         State saleState_ = saleState();
 
         if (saleState_ == State.NoSale) {
