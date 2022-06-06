@@ -45,9 +45,9 @@ contract CoffeeMonster is ERC721A, Ownable, ERC2981ContractRoyalties {
     uint256 internal phase1LaunchTime;
     uint256 internal phase2LaunchTime;
     uint256 internal phase3LaunchTime;
-    uint256 internal revealTime;
 
-    uint256 private lastPhase1Price;
+
+    uint256 private lastPhase1Price = 0.30 ether;
 
     //amount of mints that each address has executed
     mapping(address => uint256) public mintsPerAddress;
@@ -87,7 +87,7 @@ contract CoffeeMonster is ERC721A, Ownable, ERC2981ContractRoyalties {
         require(saleState() == State.NoSale, 'Sale is already Open!');
         phase1LaunchTime = block.timestamp;
         phase2LaunchTime = phase1LaunchTime + 28800; //8 hours
-        phase3LaunchTime = phase2LaunchTime + 172800; //48 hours
+        phase3LaunchTime = phase2LaunchTime + 86400; //24 hours from phase 2
     }
 
 
@@ -98,7 +98,7 @@ contract CoffeeMonster is ERC721A, Ownable, ERC2981ContractRoyalties {
         require(_saleState == State.Phase1, "Sale is not open!");
         require(numberOfTokensMinted < maxTokensPhase1, "Not enough NFTs left to mint");
         require(mintsPerAddress[msg.sender] < maxMintPhase1, "Max 5 Mints per address allowed!");
-        require(_number < maxMintPhase1, "Max reached for phase 1");
+        require(_number < maxMintPhase1, "Max mint per txn reached for phase 1");
         uint256 mintCost_ = mintCost();
         require(msg.value == mintCost_ * _number, "Not enough/too much Ether sent");
 
@@ -142,7 +142,7 @@ contract CoffeeMonster is ERC721A, Ownable, ERC2981ContractRoyalties {
         }    
 
     //This is the function that will be used in the front-end
-    function mintNfts(uint _number) external payable callerIsUser {
+    function mintNFTs(uint _number) external payable callerIsUser {
         State saleState_ = saleState();
 
         if(saleState_ == State.Phase1){
@@ -160,7 +160,7 @@ contract CoffeeMonster is ERC721A, Ownable, ERC2981ContractRoyalties {
         if (phase1LaunchTime == 0) {
             return State.NoSale;
         }
-        else if (block.timestamp < phase2LaunchTime && numberOfTokensPhase1 < maxTokensPhase1) {
+        else if (block.timestamp < phase2LaunchTime && (numberOfTokensPhase1 < maxTokensPhase1)) {
             return State.Phase1;
         }
         else if (block.timestamp < phase3LaunchTime) {
