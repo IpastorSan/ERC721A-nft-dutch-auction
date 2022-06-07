@@ -57,6 +57,8 @@ contract CoffeeMonster is ERC721A, Ownable, ERC2981ContractRoyalties {
 
     //NFT Uri
     string public baseTokenURI;
+
+    event NFTMinted(uint256, uint256, address);
     
     //declaring initial values for variables
     constructor(string memory _unrevealedURI) ERC721A("Coffee Monster Collection", "CMC") {
@@ -89,7 +91,7 @@ contract CoffeeMonster is ERC721A, Ownable, ERC2981ContractRoyalties {
     }
 
 
-    /// @dev mint a @param number of NFTs in public sale Phase 1.
+    /// @dev mint a @param _number of NFTs in public sale Phase 1.
     /// @notice price goes down by 0.5 ETH every 30 mins
     function phase1Mint(uint256 _number) internal {
         State _saleState = saleState();
@@ -100,12 +102,16 @@ contract CoffeeMonster is ERC721A, Ownable, ERC2981ContractRoyalties {
         uint256 mintCost_ = mintCost();
         require(msg.value == mintCost_ * _number, "Not enough/too much Ether sent");
 
-        _safeMint(msg.sender, _number); 
+        
         mintsPerAddress[msg.sender] += _number;
         numberOfTokensMinted += _number;
         numberOfTokensPhase1 += _number;
 
+        _safeMint(msg.sender, _number); 
+        
         lastPhase1Price = mintCost();
+
+        emit NFTMinted(_number, this.tokenId(), msg.sender);
 
     }
     
@@ -119,9 +125,13 @@ contract CoffeeMonster is ERC721A, Ownable, ERC2981ContractRoyalties {
         uint256 mintCost_ = mintCost();
         require(msg.value == mintCost_ * _number, "Not enough/too much Ether sent");
 
-            _safeMint(msg.sender, _number); 
-            mintsPerAddress[msg.sender] += _number;
-            numberOfTokensMinted += _number;
+        mintsPerAddress[msg.sender] += _number;
+        numberOfTokensMinted += _number;
+
+        _safeMint(msg.sender, _number); 
+
+        emit NFTMinted(_number, this.tokenId(), msg.sender);
+
     }
 
     ///@dev mint a @param number of NFTs in public sale. Phase 3
@@ -133,13 +143,17 @@ contract CoffeeMonster is ERC721A, Ownable, ERC2981ContractRoyalties {
         uint mintCost_ = mintCost();
         require(msg.value == mintCost_ * _number, "Not enough/too much Ether sent");
 
-        _safeMint(msg.sender, _number);
         mintsPerAddress[msg.sender] += _number;
         numberOfTokensMinted += _number;
 
+        _safeMint(msg.sender, _number);
+
+        emit NFTMinted(_number, this.tokenId(), msg.sender);
+        
+
         }    
 
-    //This is the function that will be used in the front-end
+    /// @dev This is the function that will be used in the front-end
     function mintNFTs(uint _number) external payable callerIsUser {
         State saleState_ = saleState();
 
